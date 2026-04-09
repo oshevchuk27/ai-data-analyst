@@ -2,7 +2,7 @@
 
 ## Overview
 
-DataAgent is a full-stack agentic AI application. Users submit natural language data analysis requests; the system autonomously generates Python code, executes it, self-corrects on errors, and returns results with charts and a plain-English summary.
+AI Data Analyst is a full-stack agentic AI application. Users submit natural language data analysis requests; the system autonomously generates Python code, executes it, self-corrects on errors, and returns results with charts and a plain-English summary.
 
 ---
 

@@ -1,4 +1,4 @@
-# DataAgent — AI-Powered Data Analysis Web Application
+# AI Data Analyst — AI-Powered Data Analysis Web Application
 
 > CISC 520 Final Project | Week 1 Prototype
 
@@ -41,8 +41,8 @@ An agentic AI system that lets users perform data analysis through natural langu
 ### 1. Clone & configure
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/dataagent.git
-cd dataagent
+git clone https://github.com/YOUR_USERNAME/ai-data-analyst.git
+cd ai-data-analyst
 cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
@@ -93,7 +93,7 @@ npm run dev
 ## Project Structure
 
 ```
-dataagent/
+ai-data-analyst/
 ├── README.md
 ├── .env.example
 ├── frontend/
