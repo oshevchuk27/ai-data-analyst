@@ -1,0 +1,28 @@
+# Environment
+.env
+.env.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+*.so
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated plots (temp files from code execution)
+backend/plots/
+*.png
+*.jpg
