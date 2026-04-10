@@ -43,9 +43,9 @@ class TestIsSafe:
 
 class TestExecute:
     def test_basic_print(self):
-        result = execute("print('hello dataagent')")
+        result = execute("print('hello ai data analyst')")
         assert result.success
-        assert "hello dataagent" in result.stdout
+        assert "hello ai data analyst" in result.stdout
 
     def test_pandas_stats(self):
         code = """

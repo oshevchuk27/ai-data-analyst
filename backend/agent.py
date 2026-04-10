@@ -22,7 +22,7 @@ from models import AnalyzeRequest, AnalyzeResponse, ExecutionResult, Message
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 
-SYSTEM_PROMPT = """You are DataAgent, an expert data analysis assistant. Your job is to help users explore and analyze data through natural language.
+SYSTEM_PROMPT = """You are AI Data Analyst, an expert data analysis assistant. Your job is to help users explore and analyze data through natural language.
 
 ## How you work
 

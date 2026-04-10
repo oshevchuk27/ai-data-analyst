@@ -1,5 +1,5 @@
 /**
- * api.js — typed client for the DataAgent backend.
+ * api.js — typed client for the AI Data Analyst backend.
  */
 
 const BASE = import.meta.env.VITE_API_URL || '';

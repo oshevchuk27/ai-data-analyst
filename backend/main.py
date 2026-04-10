@@ -14,7 +14,7 @@ import agent
 from models import AnalyzeRequest, AnalyzeResponse
 
 app = FastAPI(
-    title="DataAgent API",
+    title="AI Data Analyst API",
     description="AI-powered data analysis backend (CISC 520 Final Project)",
     version="0.1.0",
 )

@@ -82,8 +82,8 @@ export default function App() {
             width: 30, height: 30, background: '#1D9E75', borderRadius: 8,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 600, fontSize: 13, color: 'white',
-          }}>DA</div>
-          <span style={{ fontWeight: 500, fontSize: 14, color: '#e2e8f0' }}>DataAgent</span>
+          }}>ADA</div>
+          <span style={{ fontWeight: 500, fontSize: 14, color: '#e2e8f0' }}>AI Data Analyst</span>
         </div>
 
         <div>
