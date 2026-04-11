@@ -28,7 +28,7 @@ SYSTEM_PROMPT = """You are AI Data Analyst, an expert data analysis assistant. Y
 
 When the user asks for data analysis, you ALWAYS:
 1. Generate clean, executable Python code in a <code> block
-2. After the user shows you execution results, interpret them in a <summary>
+2. After receiving execution results from the system, interpret them in a <summary>
 
 ## Code requirements
 
