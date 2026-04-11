@@ -18,7 +18,7 @@ from typing import Optional
 import anthropic
 
 from executor import execute
-from models import AnalyzeRequest, AnalyzeResponse, ExecutionResult, Message
+from models import AnalyzeRequest, AnalyzeResponse, ExecutionResult
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
 

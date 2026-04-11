@@ -3,11 +3,11 @@ tests/test_api.py — Integration tests for FastAPI routes.
 Mocks the agent to avoid real LLM calls.
 """
 
-import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "sk-test-fake")

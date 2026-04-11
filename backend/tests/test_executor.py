@@ -3,8 +3,8 @@ tests/test_executor.py — Unit tests for the code execution sandbox.
 These tests do NOT require an Anthropic API key.
 """
 
-import pytest
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from executor import execute, is_safe
@@ -93,7 +93,8 @@ plt.close()
         os.environ["EXECUTION_TIMEOUT_SECONDS"] = "2"
 
         # Re-import to pick up new env value
-        import importlib, executor
+        import importlib
+        import executor
         importlib.reload(executor)
 
         result = executor.execute("import time\ntime.sleep(30)")

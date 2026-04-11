@@ -4,14 +4,13 @@ main.py — FastAPI application entry point.
 
 import os
 
+import agent
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from models import AnalyzeRequest, AnalyzeResponse
 
 load_dotenv()
-
-import agent
-from models import AnalyzeRequest, AnalyzeResponse
 
 app = FastAPI(
     title="AI Data Analyst API",
