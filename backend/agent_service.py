@@ -12,8 +12,8 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 from llama_index.core.agent import ReActAgent
-from llama_index.core.tools import FunctionTool
 from llama_index.llms.anthropic import Anthropic
+from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -47,45 +47,26 @@ class ReactDataAgent:
             temperature=0.1
         )
         
-        # # Create tools
-        # self.tools = [
-        #     FunctionTool.from_defaults(
-        #         fn=python_code_executor,
-        #         name="execute_python",
-        #         description="Execute Python code for data analysis. Use this to run pandas, numpy, matplotlib, seaborn, or yfinance code."
-        #     ),
-        #     FunctionTool.from_defaults(
-        #         fn=data_analysis_tool,
-        #         name="analyze_data",
-        #         description="Get suggestions for data analysis approaches based on natural language queries."
-        #     )
-        # ]
-        
+        # Create code interpreter tool from LlamaIndex tool spec
+        code_interpreter_tools = CodeInterpreterToolSpec().to_tool_list()
+
         # Create the React agent (using new workflow-based constructor)
-        system_prompt = """You are an AI Data Analyst with React (Reasoning and Acting) capabilities.
+        system_prompt = """You are an AI Data Analyst. You have access to a code_interpreter tool that executes Python code.
 
-Your role is to help users with data analysis tasks using a structured approach:
-
-1. THINK: Reason about what analysis is needed based on the user's request
-2. ACT: Use available tools when needed to execute analysis or get suggestions
-3. OBSERVE: Interpret any results from tool usage
-4. RESPOND: Provide clear, actionable insights and explanations
-
-You should:
-- Ask clarifying questions when the request is unclear
-- Suggest appropriate analysis methods for different types of data
-- Explain your reasoning process clearly
-- Provide practical, actionable insights
-- Be conversational and helpful
-
-Focus on being a knowledgeable data analysis assistant that can guide users through their analytical needs."""
+IMPORTANT RULES:
+- You MUST use the code_interpreter tool to perform ANY computation, data analysis, or data fetching — never write code in your final answer without executing it first.
+- When asked to fetch stock data, run statistics, plot charts, or do any calculation, write the Python code and call code_interpreter to run it.
+- Available libraries inside code_interpreter: pandas, numpy, matplotlib, seaborn, yfinance, scipy, requests.
+- After observing the tool output, summarise the findings clearly for the user.
+"""
 
         self.agent = ReActAgent(
             name="Data Analysis Agent",
             description="An AI agent specialized in data analysis using React approach",
             system_prompt=system_prompt,
-            tools=[],
+            tools=code_interpreter_tools,
             llm=self.llm,
+            streaming=False,
             verbose=True
         )
     
