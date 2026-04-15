@@ -26,3 +26,14 @@ class AnalyzeResponse(BaseModel):
     summary: str
     plots: list[str] = []  # base64 PNGs
     raw_llm_response: Optional[str] = None
+
+
+class AgentAnalyzeRequest(BaseModel):
+    prompt: str
+    history: list[Message] = []
+
+
+class AgentAnalyzeResponse(BaseModel):
+    summary: str
+    raw_llm_response: Optional[str] = None
+    error: Optional[str] = None

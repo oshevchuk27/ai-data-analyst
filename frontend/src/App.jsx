@@ -14,10 +14,7 @@ export default function App() {
     messages.flatMap(msg => {
       if (msg.role === 'user') return [{ role: 'user', content: msg.content }]
       if (msg.role === 'assistant') {
-        const content = msg.result
-          ? `<code>${msg.result.code || ''}</code>\n<summary>${msg.result.summary || ''}</summary>`
-          : msg.content
-        return [{ role: 'assistant', content }]
+        return [{ role: 'assistant', content: msg.content }]
       }
       return []
     })
@@ -97,9 +94,9 @@ export default function App() {
 
         <div>
           <div style={{ fontSize: 10, color: '#4a5568', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-            Pipeline
+            React Agent
           </div>
-          {['Prompt → LLM', 'LLM → Code', 'Execute Python', 'Self-correct', 'Interpret'].map((step, i) => (
+          {['Think', 'Act', 'Observe', 'Respond'].map((step, i) => (
             <div key={i} style={{
               fontSize: 11, color: '#718096', padding: '3px 0',
               display: 'flex', alignItems: 'center', gap: 6,
@@ -121,7 +118,7 @@ export default function App() {
               width: 6, height: 6, borderRadius: '50%', background: '#1D9E75',
               animation: 'pulse 2s ease-in-out infinite',
             }} />
-            Pipeline active
+            Agent active
           </div>
         </div>
       </div>

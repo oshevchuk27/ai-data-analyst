@@ -34,8 +34,8 @@ export default function ChatWindow({ messages, loading, onExample }) {
             AI Data Analysis Agent
           </h1>
           <p style={{ fontSize: 14, color: '#718096', lineHeight: 1.7, marginBottom: 24 }}>
-            Describe a data task in plain English. The agent generates Python code,
-            runs it, and returns results with charts and a summary.
+            Describe your data analysis needs in plain English. The React agent will guide you through
+            the analysis process using reasoning and structured problem-solving.
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {EXAMPLES.map((ex, i) => (
@@ -58,7 +58,7 @@ export default function ChatWindow({ messages, loading, onExample }) {
           {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
           {loading && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {['🤔 Generating code...', '⚙️ Executing...', '📝 Interpreting results...'].map((step, i) => (
+              {['🤔 Thinking about your request...', '🎯 Planning analysis approach...', '💡 Generating insights...'].map((step, i) => (
                 <div key={i} style={{
                   fontSize: 12, color: '#718096',
                   animation: `fadeIn 0.4s ease ${i * 0.6}s both`,

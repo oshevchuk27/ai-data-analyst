@@ -10,7 +10,7 @@ const BASE = import.meta.env.VITE_API_URL || '';
  * @returns {Promise<import('./types').AnalyzeResponse>}
  */
 export async function analyze(prompt, history = []) {
-  const res = await fetch(`${BASE}/api/analyze`, {
+  const res = await fetch(`${BASE}/api/agent_analyse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ prompt, history }),
