@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import MessageBubble from './MessageBubble.jsx'
 
 const EXAMPLES = [
@@ -8,12 +8,12 @@ const EXAMPLES = [
   'Compare monthly returns of TSLA vs MSFT over the past year and run a t-test',
 ]
 
-export default function ChatWindow({ messages, loading, onExample }) {
+export default function ChatWindow({ messages, onExample }) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  }, [messages])
 
   const isEmpty = messages.length === 0
 
@@ -56,18 +56,6 @@ export default function ChatWindow({ messages, loading, onExample }) {
       ) : (
         <>
           {messages.map((msg, i) => <MessageBubble key={i} message={msg} />)}
-          {loading && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {['🤔 Thinking about your request...', '🎯 Planning analysis approach...', '💡 Generating insights...'].map((step, i) => (
-                <div key={i} style={{
-                  fontSize: 12, color: '#718096',
-                  animation: `fadeIn 0.4s ease ${i * 0.6}s both`,
-                }}>
-                  {step}
-                </div>
-              ))}
-            </div>
-          )}
           <div ref={bottomRef} />
         </>
       )}

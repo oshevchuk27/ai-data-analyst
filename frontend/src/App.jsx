@@ -1,12 +1,11 @@
 import React, { useState, useRef } from 'react'
 import ChatWindow from './components/ChatWindow.jsx'
-import { analyze } from './api.js'
+import { analyzeStream } from './api.js'
 
 export default function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
   const textareaRef = useRef(null)
 
   // Build history from messages for context window
@@ -19,36 +18,73 @@ export default function App() {
       return []
     })
 
-  const submit = async (prompt) => {
+  const submit = (prompt) => {
     const text = (prompt || input).trim()
     if (!text || loading) return
 
     setInput('')
-    setError(null)
     setLoading(true)
 
-    const userMsg = { role: 'user', content: text }
-    setMessages(prev => [...prev, userMsg])
+    const history = buildHistory()
 
-    try {
-      const history = buildHistory()
-      const result = await analyze(text, history)
+    // Add user message + empty assistant placeholder in one update
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: text },
+      { role: 'assistant', content: '', result: { events: [], summary: null, charts: [] }, streaming: true },
+    ])
 
-      const assistantMsg = {
-        role: 'assistant',
-        content: result.summary,
-        result,
-      }
-      setMessages(prev => [...prev, assistantMsg])
-    } catch (err) {
-      setError(err.message)
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Error: ${err.message}`,
-      }])
-    } finally {
-      setLoading(false)
-    }
+    analyzeStream(
+      text,
+      history,
+      // onStep — append a Think or Act event (Act may have output: null initially)
+      (event) => setMessages(prev => {
+        const msgs = [...prev]
+        const last = { ...msgs[msgs.length - 1] }
+        last.result = { ...last.result, events: [...last.result.events, event] }
+        return [...msgs.slice(0, -1), last]
+      }),
+      // onStepResult — patch the last Act event with its tool output
+      (output) => setMessages(prev => {
+        const msgs = [...prev]
+        const last = { ...msgs[msgs.length - 1] }
+        const events = last.result.events.map((e, i, arr) => {
+          if (i === arr.length - 1 && e.current_label === 'Act' && e.tools) {
+            return {
+              ...e,
+              tools: e.tools.map((t, j, ts) => j === ts.length - 1 ? { ...t, output } : t),
+            }
+          }
+          return e
+        })
+        last.result = { ...last.result, events }
+        return [...msgs.slice(0, -1), last]
+      }),
+      // onDone — set summary + charts, mark streaming complete
+      ({ summary, charts }) => {
+        setMessages(prev => {
+          const msgs = [...prev]
+          const last = { ...msgs[msgs.length - 1] }
+          last.content = summary
+          last.result = { ...last.result, summary, charts }
+          last.streaming = false
+          return [...msgs.slice(0, -1), last]
+        })
+        setLoading(false)
+      },
+      // onError
+      (err) => {
+        setMessages(prev => {
+          const msgs = [...prev]
+          const last = msgs[msgs.length - 1]
+          if (last?.streaming) {
+            return [...msgs.slice(0, -1), { ...last, content: `Error: ${err.message}`, streaming: false }]
+          }
+          return [...msgs, { role: 'assistant', content: `Error: ${err.message}` }]
+        })
+        setLoading(false)
+      },
+    )
   }
 
   const handleKey = (e) => {
@@ -127,7 +163,6 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0f1117', overflow: 'hidden' }}>
         <ChatWindow
           messages={messages}
-          loading={loading}
           onExample={(ex) => submit(ex)}
         />
 
@@ -173,6 +208,7 @@ export default function App() {
 
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @keyframes dotPulse { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }

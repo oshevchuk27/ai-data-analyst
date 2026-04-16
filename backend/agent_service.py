@@ -1,63 +1,76 @@
 """
-react_agent.py — LlamaIndex React Agent implementation.
+agent_service.py — LlamaIndex ReActAgent implementation.
 
-This module implements a React (Reasoning and Acting) agent using LlamaIndex
-that can analyze data and provide structured responses.
+Captures structured Thought / Act events via stream_events() so the frontend
+can render a clean step-by-step reasoning trace.
 """
 
+import asyncio
 import os
-from typing import Optional, List, Dict, Any
+import re
+import traceback
+
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
+
 from llama_index.core.agent import ReActAgent
 from llama_index.llms.anthropic import Anthropic
 from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import yfinance as yf
-from io import StringIO
-import base64
-import traceback
-import sys
-from contextlib import redirect_stdout, redirect_stderr
 
-from models import AnalyzeRequest, AnalyzeResponse
-
+from models import (
+    AgentAnalyzeResponse,
+    AgentEvent,
+    AnalyzeRequest,
+    ToolInvocation,
+)
 
 
 class ReactDataAgent:
-    """React Agent for data analysis using LlamaIndex with OpenAI client for Anthropic."""
-    
+    """React Agent for data analysis using LlamaIndex."""
+
     def __init__(self):
-        """Initialize the React agent with LlamaIndex."""
-        # Initialize OpenAI client configured for Anthropic
         api_key = os.getenv("ANTHROPIC_API_KEY")
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY environment variable is not set")
-        
-        # Use Anthropic client
+
         self.llm = Anthropic(
             api_key=api_key,
-            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+            model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
             max_tokens=2048,
-            temperature=0.1
+            temperature=0.1,
         )
-        
-        # Create code interpreter tool from LlamaIndex tool spec
+
         code_interpreter_tools = CodeInterpreterToolSpec().to_tool_list()
 
-        # Create the React agent (using new workflow-based constructor)
-        system_prompt = """You are an AI Data Analyst. You have access to a code_interpreter tool that executes Python code.
+        system_prompt = """You are an experienced Data Scientist. You MUST use the code_interpreter tool to run any computation — never write code or results directly in your Answer.
 
-IMPORTANT RULES:
-- You MUST use the code_interpreter tool to perform ANY computation, data analysis, or data fetching — never write code in your final answer without executing it first.
-- When asked to fetch stock data, run statistics, plot charts, or do any calculation, write the Python code and call code_interpreter to run it.
-- Available libraries inside code_interpreter: pandas, numpy, matplotlib, seaborn, yfinance, scipy, requests.
-- After observing the tool output, summarise the findings clearly for the user.
+## Tool usage — MANDATORY format
+Every time you need to run code you MUST emit exactly:
+
+Thought: <what you plan to do>
+Action: code_interpreter
+Action Input: {"code": "<your python code with \\n for newlines>"}
+
+Do NOT put code in the Answer. Do NOT skip Action Input. The Action Input value MUST be a valid JSON object with a "code" key.
+
+## Coding rules
+- Each execution starts with a fresh environment — include ALL imports and redefine ALL variables in every code block.
+- Available libraries: pandas, numpy, matplotlib, seaborn, yfinance, scipy, requests.
+- Write the complete solution in a single code block whenever possible to avoid missing-variable errors.
+
+## Chart rules — follow exactly when producing any plot
+- At the top of chart code add:
+    import uuid, os
+    os.makedirs('./static/charts', exist_ok=True)
+- Save with a unique filename and print the marker (NO plt.show()):
+    _chart_path = f'./static/charts/{uuid.uuid4().hex}.png'
+    plt.savefig(_chart_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f'CHART_SAVED:{_chart_path}')
+
+## Final answer
+After observing the tool output, write a clear summary for the user. Tell the user the chart has been rendered below if one was produced.
 """
 
         self.agent = ReActAgent(
@@ -67,85 +80,245 @@ IMPORTANT RULES:
             tools=code_interpreter_tools,
             llm=self.llm,
             streaming=False,
-            verbose=True
+            verbose=False,
         )
-    
-    def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
-        """
-        Analyze data using the React agent in chat-based format.
-        
-        Args:
-            request: Analysis request containing prompt and history
-            
-        Returns:
-            Structured analysis response
-        """
+
+    async def analyze_stream(self, request: AnalyzeRequest):
+        """Async generator yielding SSE-formatted strings as the agent reasons step-by-step."""
+        import json
+        from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
         try:
-            # Convert history to LlamaIndex ChatMessage format
-            from llama_index.core.base.llms.types import ChatMessage, MessageRole
-            
             chat_history = []
             for msg in request.history:
-                role = MessageRole.USER if msg.role.lower() == "user" else MessageRole.ASSISTANT
+                role = (
+                    MessageRole.USER if msg.role.lower() == "user" else MessageRole.ASSISTANT
+                )
                 chat_history.append(ChatMessage(role=role, content=msg.content))
-            
-            # Get response from agent using chat-based format
-            import asyncio
-            
-            async def run_agent():
-                if chat_history:
-                    # Use chat_history if we have previous conversation
-                    result = await self.agent.run(
-                        user_msg=request.prompt,
-                        chat_history=chat_history
+
+            run_kwargs = {"user_msg": request.prompt}
+            if chat_history:
+                run_kwargs["chat_history"] = chat_history
+
+            handler = self.agent.run(**run_kwargs, max_iterations=9)
+            chart_urls: list[str] = []
+
+            async for event in handler.stream_events():
+                event_type = type(event).__name__
+
+                if event_type == "AgentOutput":
+                    response = getattr(event, "response", None)
+                    if not response:
+                        continue
+                    blocks = getattr(response, "blocks", [])
+                    for block in blocks:
+                        text = getattr(block, "text", "") or ""
+                        if "Thought:" not in text:
+                            continue
+                        thought = text
+                        if thought.startswith("Thought:"):
+                            thought = thought[len("Thought:"):].strip()
+                        for marker in ("\nAction:", "\nAnswer:"):
+                            if marker in thought:
+                                thought = thought[: thought.index(marker)].strip()
+                        if thought:
+                            agent_event = AgentEvent(current_label="Think", content=thought)
+                            yield f"data: {json.dumps({'type': 'step', 'event': agent_event.model_dump()})}\n\n"
+                        break
+
+                elif event_type == "ToolCall":
+                    tool_name = getattr(event, "tool_name", "unknown")
+                    tool_kwargs = getattr(event, "tool_kwargs", {})
+                    act_event = AgentEvent(
+                        current_label="Act",
+                        tools=[
+                            ToolInvocation(toolname=tool_name, queryparams=tool_kwargs, output=None)
+                        ],
                     )
-                else:
-                    # For first message, just use user_msg
-                    result = await self.agent.run(user_msg=request.prompt)
-                return result
-            
-            # Run the async agent
-            response = asyncio.run(run_agent())
-            
-            return AnalyzeResponse(
-                summary=str(response),
-                raw_llm_response=str(response)
+                    yield f"data: {json.dumps({'type': 'step', 'event': act_event.model_dump()})}\n\n"
+
+                elif event_type == "ToolCallResult":
+                    tool_output = getattr(event, "tool_output", None)
+                    if tool_output is not None:
+                        content = getattr(tool_output, "content", tool_output)
+                        if isinstance(content, str):
+                            output_str = content
+                        elif isinstance(content, list):
+                            output_str = "\n".join(
+                                getattr(block, "text", str(block)) for block in content
+                            )
+                        else:
+                            output_str = str(content)
+                    else:
+                        output_str = ""
+
+                    for match in re.finditer(
+                        r"CHART_SAVED:\./static/charts/([0-9a-f]+\.png)", output_str
+                    ):
+                        filename = match.group(1)
+                        url = f"/charts/{filename}"
+                        if url not in chart_urls:
+                            chart_urls.append(url)
+                    output_str = re.sub(
+                        r"CHART_SAVED:\./static/charts/[0-9a-f]+\.png", "", output_str
+                    )
+
+                    yield f"data: {json.dumps({'type': 'step_result', 'output': output_str})}\n\n"
+
+            result = await handler
+            summary = str(result)
+            yield f"data: {json.dumps({'type': 'done', 'summary': summary, 'charts': chart_urls})}\n\n"
+
+        except Exception as e:
+            print(f"[agent_stream] error: {traceback.format_exc()}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+    def analyze(self, request: AnalyzeRequest) -> AgentAnalyzeResponse:
+        """Run the agent and return a structured event trace."""
+        try:
+            from llama_index.core.base.llms.types import ChatMessage, MessageRole
+
+            chat_history = []
+            for msg in request.history:
+                role = (
+                    MessageRole.USER
+                    if msg.role.lower() == "user"
+                    else MessageRole.ASSISTANT
+                )
+                chat_history.append(ChatMessage(role=role, content=msg.content))
+
+            async def run_agent():
+                run_kwargs = {"user_msg": request.prompt}
+                if chat_history:
+                    run_kwargs["chat_history"] = chat_history
+                handler = self.agent.run(**run_kwargs, max_iterations=7)
+
+                agent_events: list[AgentEvent] = []
+                chart_urls: list[str] = []
+                # Index of the most recent Act event waiting for its tool result
+                pending_act_idx: int | None = None
+
+                async for event in handler.stream_events():
+                    event_type = type(event).__name__
+
+                    if event_type == "AgentOutput":
+                        response = getattr(event, "response", None)
+                        if not response:
+                            continue
+                        blocks = getattr(response, "blocks", [])
+                        for block in blocks:
+                            text = getattr(block, "text", "") or ""
+                            if "Thought:" not in text:
+                                continue
+                            # Isolate the thought text
+                            thought = text
+                            if thought.startswith("Thought:"):
+                                thought = thought[len("Thought:"):].strip()
+                            # Trim trailing Action / Answer sections
+                            for marker in ("\nAction:", "\nAnswer:"):
+                                if marker in thought:
+                                    thought = thought[: thought.index(marker)].strip()
+                            if thought:
+                                agent_events.append(
+                                    AgentEvent(
+                                        current_label="Think",
+                                        content=thought,
+                                    )
+                                )
+                            break
+
+                    elif event_type == "ToolCall":
+                        tool_name = getattr(event, "tool_name", "unknown")
+                        tool_kwargs = getattr(event, "tool_kwargs", {})
+                        act = AgentEvent(
+                            current_label="Act",
+                            tools=[
+                                ToolInvocation(
+                                    toolname=tool_name,
+                                    queryparams=tool_kwargs,
+                                    output=None,
+                                )
+                            ],
+                        )
+                        agent_events.append(act)
+                        pending_act_idx = len(agent_events) - 1
+
+                    elif event_type == "ToolCallResult":
+                        tool_output = getattr(event, "tool_output", None)
+                        if tool_output is not None:
+                            content = getattr(tool_output, "content", tool_output)
+                            # content may be a plain string, a list of blocks,
+                            # or the ToolOutput object itself
+                            if isinstance(content, str):
+                                output_str = content
+                            elif isinstance(content, list):
+                                # Each block may have a .text attribute
+                                output_str = "\n".join(
+                                    getattr(block, "text", str(block))
+                                    for block in content
+                                )
+                            else:
+                                # Last resort: stringify the whole object
+                                output_str = str(content)
+                        else:
+                            output_str = ""
+
+                        # Extract any chart paths the code printed.
+                        # Match only the UUID hex filename to avoid over-capture
+                        # when the output contains literal \n escape sequences.
+                        for match in re.finditer(
+                            r"CHART_SAVED:\./static/charts/([0-9a-f]+\.png)",
+                            output_str,
+                        ):
+                            filename = match.group(1)
+                            url = f"/charts/{filename}"
+                            print(f"[agent] chart detected → {url}")
+                            if url not in chart_urls:
+                                chart_urls.append(url)
+                        # Strip the CHART_SAVED markers from the displayed output
+                        output_str = re.sub(
+                            r"CHART_SAVED:\./static/charts/[0-9a-f]+\.png",
+                            "",
+                            output_str,
+                        )
+                        print(f"[agent] tool output (first 300 chars): {output_str[:300]!r}")
+
+                        # Attach result to the matching Act event
+                        if pending_act_idx is not None:
+                            act = agent_events[pending_act_idx]
+                            if act.tools:
+                                act.tools[-1].output = output_str
+                        pending_act_idx = None
+
+                result = await handler
+                return str(result), agent_events, chart_urls
+
+            summary, agent_events, chart_urls = asyncio.run(run_agent())
+
+            return AgentAnalyzeResponse(
+                summary=summary,
+                events=agent_events,
+                charts=chart_urls,
             )
-            
+
         except Exception as e:
             error_msg = f"React agent error: {str(e)}\n{traceback.format_exc()}"
-            return AnalyzeResponse(
+            return AgentAnalyzeResponse(
                 summary=f"I encountered an error while processing your request: {str(e)}",
                 error=error_msg,
-                raw_llm_response=error_msg
             )
-    
-    def reset_memory(self):
-        """Reset the agent's conversation memory."""
-        self.memory.reset()
 
 
 # Global agent instance
-_agent_instance = None
+_agent_instance: ReactDataAgent | None = None
 
 
 def get_react_agent() -> ReactDataAgent:
-    """Get or create the global React agent instance."""
     global _agent_instance
     if _agent_instance is None:
         _agent_instance = ReactDataAgent()
     return _agent_instance
 
 
-def run_react_agent(request: AnalyzeRequest) -> AnalyzeResponse:
-    """
-    Run analysis using the React agent.
-    
-    Args:
-        request: Analysis request
-        
-    Returns:
-        Analysis response
-    """
-    agent = get_react_agent()
-    return agent.analyze(request)
+def run_react_agent(request: AnalyzeRequest) -> AgentAnalyzeResponse:
+    return get_react_agent().analyze(request)

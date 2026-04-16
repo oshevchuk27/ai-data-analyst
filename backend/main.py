@@ -9,15 +9,23 @@ import agent_service
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from models import AnalyzeRequest, AnalyzeResponse, AgentAnalyzeRequest, AgentAnalyzeResponse
 
 load_dotenv()
+
+# Ensure the charts directory exists before mounting
+os.makedirs("static/charts", exist_ok=True)
 
 app = FastAPI(
     title="AI Data Analyst API",
     description="AI-powered data analysis backend (CISC 520 Final Project)",
     version="0.1.0",
 )
+
+# Serve saved chart images at /charts/<filename>
+app.mount("/charts", StaticFiles(directory="static/charts"), name="charts")
 
 # ── CORS ───────────────────────────────────────────────────────────────────
 origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",")
@@ -91,17 +99,39 @@ def agent_analyse(request: AgentAnalyzeRequest):
             prompt=request.prompt,
             history=request.history
         )
-        result = agent_service.run_react_agent(analyze_request)
-        
-        # Convert AnalyzeResponse to AgentAnalyzeResponse
-        return AgentAnalyzeResponse(
-            summary=result.summary,
-            raw_llm_response=result.raw_llm_response,
-            error=result.error
-        )
+        return agent_service.run_react_agent(analyze_request)
     except Exception as exc:
         # Log the full error for debugging
         import traceback
         print(f"Error in /api/agent_analyse: {exc}")
         print(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/agent_analyse/stream")
+async def agent_analyse_stream(request: AgentAnalyzeRequest):
+    """
+    Streaming SSE endpoint. Emits each Think/Act step as it happens so the
+    frontend can render the reasoning trace in real-time.
+    """
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
+
+    blocked_keywords = ["rm -rf", "drop table", "delete from", "format c:"]
+    if any(kw in request.prompt.lower() for kw in blocked_keywords):
+        raise HTTPException(status_code=400, detail="Prompt contains disallowed content.")
+
+    analyze_request = AnalyzeRequest(prompt=request.prompt, history=request.history)
+
+    async def generate():
+        async for chunk in agent_service.get_react_agent().analyze_stream(analyze_request):
+            yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
