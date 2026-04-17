@@ -364,6 +364,8 @@ function AgentTrace({ events }) {
 
 // ── Charts ─────────────────────────────────────────────────────────────────
 
+const BACKEND = import.meta.env.VITE_API_URL || ''
+
 function Charts({ urls }) {
   if (!urls || urls.length === 0) return null
   return (
@@ -371,7 +373,7 @@ function Charts({ urls }) {
       {urls.map((url, i) => (
         <img
           key={i}
-          src={url}   // proxied through Vite: /charts/<file> → backend
+          src={`${BACKEND}${url}`}
           alt={`Chart ${i + 1}`}
           style={{
             borderRadius: 10,
