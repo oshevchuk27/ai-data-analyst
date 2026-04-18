@@ -15,25 +15,75 @@ An agentic AI system that lets users perform data analysis through natural langu
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Browser (Frontend)                 │
-│   React chat UI · Code renderer · Chart.js plots    │
-└───────────────────────┬─────────────────────────────┘
-                        │ HTTP POST /api/analyze
-┌───────────────────────▼─────────────────────────────┐
-│                 FastAPI Backend                      │
-│   Prompt builder → Anthropic API → Code parser      │
-│   → Python executor (subprocess + timeout)          │
-│   → Result interpreter → Structured JSON response   │
-└───────────────────────┬─────────────────────────────┘
-                        │ HTTPS
-              ┌─────────▼──────────┐
-              │   Anthropic API    │
-              │  claude-sonnet-4   │
-              └────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                        Browser (React + Vite)                    │
+│   Chat UI · Think/Act/Observe trace · Chart renderer             │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │ HTTP POST /api/agent_analyse/stream  (SSE)
+┌────────────────────────────▼─────────────────────────────────────┐
+│                        FastAPI Backend                           │
+│                                                                  │
+│   ┌───────────────────────────────────────────────────────────┐  │
+│   │                   agent_service.py                        │  │
+│   │              (LlamaIndex ReActAgent)                      │  │
+│   │                                                           │  │
+│   │   stream_events() loop:                                   │  │
+│   │     AgentOutput   → Think event  (reasoning text)        │  │
+│   │     ToolCall      → Act event    (code to run)           │  │
+│   │     ToolCallResult→ Observe      (stdout + chart URLs)   │  │
+│   └──────────────────────────────┬────────────────────────────┘  │
+│                                  │                               │
+│   ┌──────────────────────────────▼────────────────────────────┐  │
+│   │          CodeInterpreterToolSpec (LlamaIndex)             │  │
+│   │   Executes Python in-process · captures stdout/stderr     │  │
+│   │   Charts saved to static/charts/<uuid>.png               │  │
+│   └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│   StaticFiles mount: /charts → backend/static/charts/           │
+└────────────────────────────┬─────────────────────────────────────┘
+                             │ HTTPS
+                   ┌─────────▼──────────┐
+                   │   Anthropic API    │
+                   │ claude-api.        │
+                   │                    │
+                   └────────────────────┘
 ```
 
-**Agentic pattern implemented:** Multi-step reasoning (plan → generate code → execute → interpret) with self-correction on execution errors and iterative refinement via conversation history.
+### API Routes
+
+| Route | Purpose |
+|-------|---------|
+| `POST /api/agent_analyse/stream` | ReAct loop over SSE — pushes each Think/Act/Observe step to the browser as it happens |
+| `GET /health` | Liveness check; returns active model name |
+| `GET /charts/<filename>` | Serves chart PNGs saved by the agent |
+
+### Data Models (`models.py`)
+
+```
+AnalyzeRequest          prompt + history[]
+AnalyzeResponse         code, output, summary, plots[], thinking[]
+
+AgentAnalyzeRequest     prompt + history[]
+AgentAnalyzeResponse    summary, events[], charts[]
+
+AgentEvent              current_label ("Think" | "Act")
+                        content          ← reasoning text (Think)
+                        tools[]          ← ToolInvocation list (Act)
+
+ToolInvocation          toolname, queryparams, output
+```
+
+### ReAct Agent internals (`agent_service.py`)
+
+The agent runs a LlamaIndex `ReActAgent` with `streaming=False` and captures each structured event via `stream_events()`:
+
+- **AgentOutput** → extracts `Thought:` text → emitted as a `Think` event
+- **ToolCall** → records tool name + kwargs → emitted as an `Act` event
+- **ToolCallResult** → tool output attached to the preceding Act; `CHART_SAVED:` markers extracted into `charts[]`
+
+A `_CODE_PREAMBLE` is injected at the top of every execution (`import uuid, os; os.makedirs(...)`) so the LLM never needs to write setup boilerplate. A pre-installed package list (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `statsmodels`, `plotly`, and more) is pip-installed once at startup.
+
+**Agentic pattern implemented:** Multi-step reasoning (Think → Act → Observe) with automatic self-correction on execution errors and iterative refinement via conversation history.
 
 ---
 
