@@ -234,7 +234,7 @@ As required by the course, the following documents all AI tool usage in this pro
 | Demo scenario design | Designed all 5 demo scenario prompts and follow-up prompts for iterative refinement testing |
 
 ### Which parts were AI-assisted
-All code in this repository was generated with Claude.ai assistance. The students directed the architecture decisions, reviewed all generated code, debugged issues interactively with Claude, and validated the application end-to-end through manual testing.
+The initial codebase was generated with Claude.ai (Anthropic's web interface). The students directed the architecture decisions, reviewed all generated code, debugged issues interactively with Claude.ai, and validated the application end-to-end through manual testing. Subsequent iterations — including bug fixes, new features, and refactoring — were done using Claude Code, Anthropic's agentic CLI tool that operates directly in the editor and terminal.
 
 ### How the project evolved with Claude
 
