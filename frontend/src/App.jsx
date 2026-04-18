@@ -1,12 +1,30 @@
 import React, { useState, useRef } from 'react'
 import ChatWindow from './components/ChatWindow.jsx'
-import { analyzeStream } from './api.js'
+import { analyzeStream, uploadFile } from './api.js'
 
 export default function App() {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [attachedFile, setAttachedFile] = useState(null)   // { path, name }
+  const [uploading, setUploading] = useState(false)
   const textareaRef = useRef(null)
+  const fileInputRef = useRef(null)
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      const { file_path, file_name } = await uploadFile(file)
+      setAttachedFile({ path: file_path, name: file_name })
+    } catch (err) {
+      alert(`Upload failed: ${err.message}`)
+    } finally {
+      setUploading(false)
+    }
+  }
 
   // Build history from messages for context window
   const buildHistory = () =>
@@ -26,11 +44,16 @@ export default function App() {
     setLoading(true)
 
     const history = buildHistory()
+    const filePath = attachedFile?.path ?? null
+    const fileName = attachedFile?.name ?? null
+    setAttachedFile(null)
 
-    // Add user message + empty assistant placeholder in one update
+    // Show the file name alongside the user message if one was attached
+    const displayText = fileName ? `[${fileName}]\n${text}` : text
+
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: text },
+      { role: 'user', content: displayText },
       { role: 'assistant', content: '', result: { events: [], summary: null, charts: [] }, streaming: true },
     ])
 
@@ -84,6 +107,8 @@ export default function App() {
         })
         setLoading(false)
       },
+      filePath,
+      fileName,
     )
   }
 
@@ -167,48 +192,97 @@ export default function App() {
         />
 
         {/* Input area */}
-        <div style={{
-          borderTop: '1px solid #1e2533', padding: '12px 16px',
-          display: 'flex', gap: 10, alignItems: 'flex-end',
-          background: '#0d1117',
-        }}>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={e => { setInput(e.target.value); autoResize() }}
-            onKeyDown={handleKey}
-            placeholder="Describe your data analysis task…"
-            rows={1}
-            style={{
-              flex: 1, resize: 'none', border: '1px solid #2d3748',
-              borderRadius: 10, padding: '10px 14px', fontSize: 14,
-              fontFamily: 'inherit', lineHeight: 1.5, minHeight: 42,
-              maxHeight: 140, color: '#e2e8f0', background: '#1e2533',
-              outline: 'none', transition: 'border-color 0.15s',
-            }}
-            onFocus={e => e.target.style.borderColor = '#1D9E75'}
-            onBlur={e => e.target.style.borderColor = '#2d3748'}
-          />
-          <button
-            onClick={() => submit()}
-            disabled={loading || !input.trim()}
-            style={{
-              width: 42, height: 42, background: loading || !input.trim() ? '#2d3748' : '#1D9E75',
-              border: 'none', borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer',
-              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, transition: 'background 0.15s',
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-              <path d="M1 7.5h13M7.5 1l6.5 6.5-6.5 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+        <div style={{ borderTop: '1px solid #1e2533', background: '#0d1117' }}>
+          {/* File badge */}
+          {attachedFile && (
+            <div style={{ padding: '6px 16px 0' }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: '#0f2e22', border: '1px solid #1D9E75',
+                borderRadius: 6, padding: '3px 8px', fontSize: 12, color: '#1D9E75',
+              }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                {attachedFile.name}
+                <button onClick={() => setAttachedFile(null)} style={{
+                  background: 'none', border: 'none', color: '#1D9E75',
+                  cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: 14,
+                }}>×</button>
+              </span>
+            </div>
+          )}
+
+          <div style={{ padding: '10px 16px', display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              style={{ display: 'none' }}
+              onChange={handleFileSelect}
+            />
+
+            {/* Paperclip button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || uploading}
+              title="Attach CSV or Excel file"
+              style={{
+                width: 42, height: 42, background: attachedFile ? '#0f2e22' : '#1e2533',
+                border: `1px solid ${attachedFile ? '#1D9E75' : '#2d3748'}`,
+                borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer',
+                color: attachedFile ? '#1D9E75' : '#718096',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'all 0.15s',
+              }}
+            >
+              {uploading
+                ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ animation: 'spin 1s linear infinite' }}><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" /></svg>
+                : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" /></svg>
+              }
+            </button>
+
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={e => { setInput(e.target.value); autoResize() }}
+              onKeyDown={handleKey}
+              placeholder="Describe your data analysis task…"
+              rows={1}
+              style={{
+                flex: 1, resize: 'none', border: '1px solid #2d3748',
+                borderRadius: 10, padding: '10px 14px', fontSize: 14,
+                fontFamily: 'inherit', lineHeight: 1.5, minHeight: 42,
+                maxHeight: 140, color: '#e2e8f0', background: '#1e2533',
+                outline: 'none', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => e.target.style.borderColor = '#1D9E75'}
+              onBlur={e => e.target.style.borderColor = '#2d3748'}
+            />
+            <button
+              onClick={() => submit()}
+              disabled={loading || !input.trim()}
+              style={{
+                width: 42, height: 42, background: loading || !input.trim() ? '#2d3748' : '#1D9E75',
+                border: 'none', borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer',
+                color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0, transition: 'background 0.15s',
+              }}
+            >
+              <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                <path d="M1 7.5h13M7.5 1l6.5 6.5-6.5 6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
       <style>{`
         @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
         @keyframes dotPulse { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }

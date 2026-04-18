@@ -76,6 +76,19 @@ from models import (
 )
 
 
+def _build_user_msg(request: AnalyzeRequest) -> str:
+    """Return the user message, prepending file context when a file is attached."""
+    if not request.file_path:
+        return request.prompt
+    ext = (request.file_path or "").rsplit(".", 1)[-1].lower()
+    loader = "pd.read_excel" if ext in ("xlsx", "xls") else "pd.read_csv"
+    return (
+        f'The user has uploaded a file named "{request.file_name}".\n'
+        f'Load it with: df = {loader}(r"{request.file_path}")\n\n'
+        f'{request.prompt}'
+    )
+
+
 class ReactDataAgent:
     """React Agent for data analysis using LlamaIndex."""
 
@@ -147,7 +160,8 @@ After observing the tool output, write a clear summary for the user. Tell the us
                 )
                 chat_history.append(ChatMessage(role=role, content=msg.content))
 
-            run_kwargs = {"user_msg": request.prompt}
+            user_msg = _build_user_msg(request)
+            run_kwargs = {"user_msg": user_msg}
             if chat_history:
                 run_kwargs["chat_history"] = chat_history
 
@@ -223,6 +237,9 @@ After observing the tool output, write a clear summary for the user. Tell the us
         except Exception as e:
             print(f"[agent_stream] error: {traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        finally:
+            if request.file_path and os.path.exists(request.file_path):
+                os.remove(request.file_path)
 
     def analyze(self, request: AnalyzeRequest) -> AgentAnalyzeResponse:
         """Run the agent and return a structured event trace."""
@@ -239,7 +256,7 @@ After observing the tool output, write a clear summary for the user. Tell the us
                 chat_history.append(ChatMessage(role=role, content=msg.content))
 
             async def run_agent():
-                run_kwargs = {"user_msg": request.prompt}
+                run_kwargs = {"user_msg": _build_user_msg(request)}
                 if chat_history:
                     run_kwargs["chat_history"] = chat_history
                 handler = self.agent.run(**run_kwargs, max_iterations=7)

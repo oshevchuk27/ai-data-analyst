@@ -3,11 +3,12 @@ main.py — FastAPI application entry point.
 """
 
 import os
+import uuid
 
 import agent
 import agent_service
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -15,8 +16,10 @@ from models import AnalyzeRequest, AnalyzeResponse, AgentAnalyzeRequest, AgentAn
 
 load_dotenv()
 
-# Ensure the charts directory exists before mounting
+# Ensure required directories exist before mounting
 os.makedirs("static/charts", exist_ok=True)
+UPLOADS_DIR = os.path.abspath("uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 app = FastAPI(
     title="AI Data Analyst API",
@@ -39,6 +42,23 @@ app.add_middleware(
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Accept a CSV/Excel file, persist it, and return its server-side path."""
+    allowed = {".csv", ".xlsx", ".xls"}
+    _, ext = os.path.splitext(file.filename or "")
+    if ext.lower() not in allowed:
+        raise HTTPException(status_code=400, detail="Only CSV and Excel files are supported.")
+
+    safe_name = f"{uuid.uuid4().hex}{ext.lower()}"
+    file_path = os.path.join(UPLOADS_DIR, safe_name)
+    contents = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    return {"file_path": file_path, "file_name": file.filename}
+
 
 @app.get("/health")
 def health():
@@ -121,7 +141,12 @@ async def agent_analyse_stream(request: AgentAnalyzeRequest):
     if any(kw in request.prompt.lower() for kw in blocked_keywords):
         raise HTTPException(status_code=400, detail="Prompt contains disallowed content.")
 
-    analyze_request = AnalyzeRequest(prompt=request.prompt, history=request.history)
+    analyze_request = AnalyzeRequest(
+        prompt=request.prompt,
+        history=request.history,
+        file_path=request.file_path,
+        file_name=request.file_name,
+    )
 
     async def generate():
         async for chunk in agent_service.get_react_agent().analyze_stream(analyze_request):

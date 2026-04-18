@@ -10,6 +10,8 @@ class Message(BaseModel):
 class AnalyzeRequest(BaseModel):
     prompt: str
     history: list[Message] = []
+    file_path: Optional[str] = None   # absolute server-side path to uploaded file
+    file_name: Optional[str] = None   # original filename shown to user
 
 
 class ExecutionResult(BaseModel):
@@ -52,6 +54,8 @@ class AgentEvent(BaseModel):
 class AgentAnalyzeRequest(BaseModel):
     prompt: str
     history: list[Message] = []
+    file_path: Optional[str] = None
+    file_name: Optional[str] = None
 
 
 class AgentAnalyzeResponse(BaseModel):
