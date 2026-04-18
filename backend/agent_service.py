@@ -15,8 +15,58 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from llama_index.core.agent import ReActAgent
+from llama_index.core.tools import FunctionTool
 from llama_index.llms.anthropic import Anthropic
 from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
+
+_code_spec = CodeInterpreterToolSpec()
+
+# Common data science packages pre-installed at startup so the LLM never needs
+# subprocess calls for them.
+_PREINSTALLED_PACKAGES = [
+    "pandas", "numpy", "matplotlib", "scipy", "scikit-learn",
+    "yfinance", "seaborn", "statsmodels", "plotly", "requests",
+    "openpyxl", "xlrd", "beautifulsoup4", "lxml", "pyarrow",
+]
+
+def _ensure_packages() -> None:
+    """Install common packages once at startup (no-op if already present)."""
+    import subprocess, sys
+    subprocess.run(
+        [sys.executable, "-m", "pip", "install", "--quiet"] + _PREINSTALLED_PACKAGES,
+        capture_output=True,
+    )
+
+_ensure_packages()
+
+# Injected at the top of every code execution so the LLM never needs to write it.
+_CODE_PREAMBLE = """\
+import uuid, os
+os.makedirs('./static/charts', exist_ok=True)
+"""
+
+
+def _code_interpreter(code: str, **kwargs) -> str:
+    """Execute Python code and return stdout/stderr."""
+    # If the code arrived as a single flat line (no real newlines), the JSON
+    # string was not decoded — escape sequences like \n, \", \\ are still raw.
+    # Decode the whole thing as a JSON string to restore all of them at once.
+    if "\n" not in code:
+        import json
+        try:
+            code = json.loads(f'"{code}"')
+        except json.JSONDecodeError:
+            code = code.replace("\\n", "\n")
+    # LLMs sometimes double-escape backslash line-continuations (\\\n → \\+newline).
+    # A literal \\ at end of line is never valid Python here; convert to a space
+    # so the expression stays on one logical line and avoids SyntaxError.
+    code = re.sub(r'\\\\\n\s*', ' ', code)
+    return _code_spec.code_interpreter(code=_CODE_PREAMBLE + code)
+
+
+_code_interpreter_tools = [
+    FunctionTool.from_defaults(fn=_code_interpreter, name="code_interpreter")
+]
 
 from models import (
     AgentAnalyzeResponse,
@@ -36,12 +86,12 @@ class ReactDataAgent:
 
         self.llm = Anthropic(
             api_key=api_key,
-            model=os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001"),
+            model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
             max_tokens=2048,
             temperature=0.1,
         )
 
-        code_interpreter_tools = CodeInterpreterToolSpec().to_tool_list()
+        code_interpreter_tools = _code_interpreter_tools
 
         system_prompt = """You are an experienced Data Scientist. You MUST use the code_interpreter tool to run any computation — never write code or results directly in your Answer.
 
@@ -56,14 +106,15 @@ Do NOT put code in the Answer. Do NOT skip Action Input. The Action Input value 
 
 ## Coding rules
 - Each execution starts with a fresh environment — include ALL imports and redefine ALL variables in every code block.
-- Available libraries: pandas, numpy, matplotlib, seaborn, yfinance, scipy, requests.
-- Write the complete solution in a single code block whenever possible to avoid missing-variable errors.
+- The following packages are ALREADY INSTALLED — import them directly, never pip-install them:
+  pandas, numpy, matplotlib, scipy, scikit-learn, yfinance, seaborn, statsmodels, plotly, requests, openpyxl, xlrd, beautifulsoup4, lxml, pyarrow
+- If you need a package NOT in the list above, install it with EXACTLY this one-liner (single line, no backslashes, no sys.executable): `import subprocess; subprocess.run(["pip", "install", "<package>"], check=True, capture_output=True)` then import it below.
+- Every task mentioned in the user's prompt MUST be completed in a single code block. Never split the work across multiple tool calls — if the user asks for data fetching, analysis, and plotting, all of it goes in one code block.
+- When using f-string format specifiers (e.g. `:.2f`, `:.4%`), the value MUST be a Python scalar. Always use `.iloc[0]` or `.item()` to extract a scalar from a Series or array before formatting — never wrap a Series in `float()`.
 
 ## Chart rules — follow exactly when producing any plot
-- At the top of chart code add:
-    import uuid, os
-    os.makedirs('./static/charts', exist_ok=True)
-- Save with a unique filename and print the marker (NO plt.show()):
+- DO NOT import uuid or call os.makedirs — they are already set up for you.
+- Save the chart and print the marker with these exact lines (NO plt.show()):
     _chart_path = f'./static/charts/{uuid.uuid4().hex}.png'
     plt.savefig(_chart_path, dpi=150, bbox_inches='tight')
     plt.close()
