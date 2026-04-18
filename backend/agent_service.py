@@ -8,16 +8,23 @@ can render a clean step-by-step reasoning trace.
 import asyncio
 import os
 import re
+import subprocess
+import sys
 import traceback
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
 from llama_index.core.agent import ReActAgent
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.anthropic import Anthropic
 from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
+from models import (
+    AgentAnalyzeResponse,
+    AgentEvent,
+    AnalyzeRequest,
+    ToolInvocation,
+)
+
+load_dotenv()
 
 _code_spec = CodeInterpreterToolSpec()
 
@@ -31,7 +38,6 @@ _PREINSTALLED_PACKAGES = [
 
 def _ensure_packages() -> None:
     """Install common packages once at startup (no-op if already present)."""
-    import subprocess, sys
     subprocess.run(
         [sys.executable, "-m", "pip", "install", "--quiet"] + _PREINSTALLED_PACKAGES,
         capture_output=True,
@@ -67,14 +73,6 @@ def _code_interpreter(code: str, **kwargs) -> str:
 _code_interpreter_tools = [
     FunctionTool.from_defaults(fn=_code_interpreter, name="code_interpreter")
 ]
-
-from models import (
-    AgentAnalyzeResponse,
-    AgentEvent,
-    AnalyzeRequest,
-    ToolInvocation,
-)
-
 
 def _build_user_msg(request: AnalyzeRequest) -> str:
     """Return the user message, prepending file context when a file is attached."""
