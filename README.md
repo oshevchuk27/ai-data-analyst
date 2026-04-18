@@ -185,3 +185,29 @@ As required by the course, the following documents all AI tool usage in this pro
 
 ### Which parts were AI-assisted
 All code in this repository was generated with Claude.ai assistance. The students directed the architecture decisions, reviewed all generated code, debugged issues interactively with Claude, and validated the application end-to-end through manual testing.
+
+### How the project evolved with Claude
+
+**Event 1 — The core question:** Should the AI suggest code or run it? Claude helped reason through the trade-offs; the team chose to run it — real output (numbers, charts) makes the tool useful, not fancy autocomplete.
+
+**Event 2 — Architecture laid out:** Claude sketched the three-layer design (React → FastAPI → Anthropic API) and recommended two separate routes (`/api/analyze` and `/api/agent_analyse`) so the simpler path stayed intact while the agentic path was iterated on.
+
+**Event 3 — First working agent:** Claude generated `agent.py` — a direct Anthropic API call that prompted the LLM to write Python, extracted the code block, ran it in a subprocess, and returned the output. Fast to build, but if the code was wrong there was no way for the model to see the error and fix it.
+
+**Event 4 — Upgrade to ReAct agent:** Claude recommended LlamaIndex's `ReActAgent` and generated `agent_service.py`. The Think → Act → Observe loop gave the model automatic self-correction with no custom retry logic.
+
+**Event 5 — Code interpreter tool:** Claude wrote a custom executor first, then identified LlamaIndex's `CodeInterpreterToolSpec` as a better drop-in — less code, better isolation, free compatibility with pandas, yfinance, and matplotlib.
+
+**Event 6 — Agent returned code instead of running it:** Two bugs: `streaming=True` (the LlamaIndex default) caused the ReAct parser to misread the Anthropic response mid-stream, and the system prompt was too weak. Claude diagnosed both root causes and provided the fix: set `streaming=False` and rewrite the prompt to explicitly prohibit writing code without executing it first.
+
+**Event 7 — Streaming the reasoning trace:** Claude designed and implemented the `/api/agent_analyse/stream` SSE endpoint so the frontend could show Think / Act / Observe steps live rather than waiting for a single large response.
+
+**Event 8 — Reasoning steps exposed in the UI:** The chat window only showed the final answer while intermediate steps went to the server terminal via `verbose=True`. Claude rewrote the agent as a manual ReAct loop using the Anthropic SDK directly, capturing each thought and tool call as a `steps[]` array in the response, and updated the frontend to render each step as a distinct bubble.
+
+**Event 9 — Reasoning trace was unreadable:** After wiring up the trace display, the UI showed nothing useful. Claude read the raw API response alongside the existing `_parse_react_trace()` function and immediately identified the mismatch: the parser expected old-style verbose text (`Thought: / Action: / Observation:`) but the new LlamaIndex agent emitted structured Python event objects. Fix: replaced stdout parsing with `stream_events()` API, redesigned the data models around typed event objects, and grouped tool call + result into a single `Act` event.
+
+**Event 10 — Chart rendering:** Claude evaluated two options (base64 in the response body vs. save to disk and return a URL) and recommended URLs for their small payload size and streaming friendliness. It generated the full pipeline: system prompt instructions for saving charts with a `CHART_SAVED:` marker, backend regex extraction, FastAPI `StaticFiles` mount, and the Vite proxy entry.
+
+**Event 11 — Chart URL had garbage appended:** Browser was requesting `/charts/abc123.png/n/nHistogram`. Claude diagnosed the regex bug: `[^'\s\n]+` matched the two-character literal `\n` sequence instead of stopping at it. Fix: replace with `[0-9a-f]+\.png` — anchored to the exact UUID filename shape, leaving no room for over-capture.
+
+**Event 12 — UX polish:** Claude made three targeted improvements: code blocks default to open, tool output with literal `\n` sequences is normalised to real newlines before display, and stderr is given a red label bar and red text on a dark background so errors are immediately obvious.
