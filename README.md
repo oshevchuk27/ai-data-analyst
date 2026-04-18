@@ -211,6 +211,24 @@ The app is deployed using **Railway** (backend) and **Vercel** (frontend). Both 
 - **Matplotlib figure capture depends on server environment** — requires `MPLBACKEND=Agg` environment variable to be set on the server; missing this causes charts to not render in the deployed version
 - **yfinance network timeouts** — fetching live stock data can exceed the execution timeout on slow network conditions; the timeout has been set to 60 seconds to mitigate this
 
+## Week 2 Improvements
+
+The following limitations from Week 1 were addressed in Week 2 using Claude Code:
+
+- **CSV and Excel file upload** — Added `POST /api/upload` endpoint and a paperclip button in the UI. Users can now attach `.csv`, `.xlsx`, or `.xls` files before sending a prompt. The agent receives the file path and loads the data with `pd.read_csv()` or `pd.read_excel()` automatically. Uploaded files are deleted from the server after the response completes.
+- **Dynamic package installation** — Common data science libraries (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `statsmodels`, `plotly`, and more) are now pre-installed at server startup. The LLM no longer needs to write `subprocess` pip install calls for routine packages, eliminating a whole class of code generation errors.
+- **Agent code generation reliability** — Fixed several recurring errors caused by the LLM generating malformed Python inside JSON-encoded action inputs: double-escaped backslash line-continuations (`\\` at end of line), `os.makedirs` syntax errors, and `Series.__format__` type errors on f-string formatting. A `_CODE_PREAMBLE` is now injected before every execution so the LLM never needs to write chart setup boilerplate.
+- **`_uuid` module collision** — Fixed a crash where `import uuid as _uuid` silently resolved to Python's internal C extension `_uuid` (which has no `uuid4`). Renamed to `import uuid` throughout.
+
+### Known Limitations (Week 2)
+
+- **No true sandbox isolation** — code execution still runs in a Python subprocess, not a fully isolated Docker container. A Docker-based sandbox is planned for a future iteration.
+- **Single-turn file references only** — uploaded files are deleted after the agent responds. If the user asks a follow-up question referencing the same file, it is no longer available. Re-uploading on each turn is required for multi-turn file analysis.
+- **No file size limit** — large files can slow down the agent or hit the output character cap.
+- **One file per message** — the UI supports a single file attachment per prompt.
+- **No persistent conversation history** — conversation context is stored in browser memory and lost on page refresh.
+- **No authentication or rate limiting** — API endpoints remain publicly accessible with no per-user controls.
+
 ---
 
 ## AI Usage Documentation
