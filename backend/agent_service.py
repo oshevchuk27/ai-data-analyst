@@ -22,22 +22,22 @@ from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
 _code_spec = CodeInterpreterToolSpec()
 
 # Common data science packages pre-installed at startup so the LLM never needs
-# subprocess calls for them.
-_PREINSTALLED_PACKAGES = [
-    "pandas", "numpy", "matplotlib", "scipy", "scikit-learn",
-    "yfinance", "seaborn", "statsmodels", "plotly", "requests",
-    "openpyxl", "xlrd", "beautifulsoup4", "lxml", "pyarrow",
-]
+# # subprocess calls for them.
+# _PREINSTALLED_PACKAGES = [
+#     "pandas", "numpy", "matplotlib", "scipy", "scikit-learn",
+#     "yfinance", "seaborn", "statsmodels", "plotly", "requests",
+#     "openpyxl", "xlrd", "beautifulsoup4", "lxml", "pyarrow",
+# ]
 
-def _ensure_packages() -> None:
-    """Install common packages once at startup (no-op if already present)."""
-    import subprocess, sys
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--quiet"] + _PREINSTALLED_PACKAGES,
-        capture_output=True,
-    )
+# def _ensure_packages() -> None:
+#     """Install common packages once at startup (no-op if already present)."""
+#     import subprocess, sys
+#     subprocess.run(
+#         [sys.executable, "-m", "pip", "install", "--quiet"] + _PREINSTALLED_PACKAGES,
+#         capture_output=True,
+#     )
 
-_ensure_packages()
+# _ensure_packages()
 
 # Injected at the top of every code execution so the LLM never needs to write it.
 _CODE_PREAMBLE = """\
@@ -46,20 +46,37 @@ os.makedirs('./static/charts', exist_ok=True)
 """
 
 
+def _decode_escape_sequences(code: str) -> str:
+    """Character-by-character expansion of backslash escape sequences.
+
+    json.loads wrapping fails whenever code contains double-quoted strings
+    (the outer wrapper produces malformed JSON). This scanner is immune to
+    that because it never wraps the whole string — it just walks each char.
+    """
+    if "\\" not in code:
+        return code
+    _SIMPLE = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", "'": "'", '"': '"'}
+    out: list[str] = []
+    i = 0
+    while i < len(code):
+        if code[i] == "\\" and i + 1 < len(code):
+            nxt = code[i + 1]
+            if nxt in _SIMPLE:
+                out.append(_SIMPLE[nxt])
+                i += 2
+            else:
+                out.append(code[i])
+                i += 1
+        else:
+            out.append(code[i])
+            i += 1
+    return "".join(out)
+
+
 def _code_interpreter(code: str, **kwargs) -> str:
     """Execute Python code and return stdout/stderr."""
-    # If the code arrived as a single flat line (no real newlines), the JSON
-    # string was not decoded — escape sequences like \n, \", \\ are still raw.
-    # Decode the whole thing as a JSON string to restore all of them at once.
-    if "\n" not in code:
-        import json
-        try:
-            code = json.loads(f'"{code}"')
-        except json.JSONDecodeError:
-            code = code.replace("\\n", "\n")
-    # LLMs sometimes double-escape backslash line-continuations (\\\n → \\+newline).
-    # A literal \\ at end of line is never valid Python here; convert to a space
-    # so the expression stays on one logical line and avoids SyntaxError.
+    code = _decode_escape_sequences(code)
+    # Remove any surviving double-escaped backslash line-continuations.
     code = re.sub(r'\\\\\n\s*', ' ', code)
     return _code_spec.code_interpreter(code=_CODE_PREAMBLE + code)
 
@@ -87,42 +104,109 @@ class ReactDataAgent:
         self.llm = Anthropic(
             api_key=api_key,
             model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
-            max_tokens=2048,
+            max_tokens=8192,
             temperature=0.1,
         )
 
         code_interpreter_tools = _code_interpreter_tools
 
-        system_prompt = """You are an experienced Data Scientist. You MUST use the code_interpreter tool to run any computation — never write code or results directly in your Answer.
+        system_prompt = """<role>
+You are a Senior Data Scientist with 10+ years of experience across finance, healthcare, and tech. Your superpower is turning raw, messy data into crystal-clear visual stories that drive decisions.
 
-## Tool usage — MANDATORY format
-Every time you need to run code you MUST emit exactly:
+Your approach follows a disciplined three-phase method:
+  1. EXPLORE — understand the data's shape, quality, and distributions before drawing conclusions
+  2. ANALYZE — apply the right statistical or ML technique for the question at hand
+  3. COMMUNICATE — always pair findings with a well-labeled chart; a number without context is noise
 
-Thought: <what you plan to do>
+Visual storytelling principles you live by:
+  - Choose chart types deliberately: time trends → line charts, comparisons → bar charts, distributions → histograms/box plots, correlations → scatter/heatmaps
+  - Every chart must have a descriptive title, labeled axes with units, and a legend when needed
+  - Use color purposefully — highlight the key insight, not just make things pretty
+  - Add annotations (reference lines, shaded regions, callout text) to draw the viewer's eye to what matters
+
+You NEVER guess at numbers — every statistic, percentage, or metric you mention in your final answer was computed by the code interpreter and observed in its output. Your ONLY way to compute, analyze, and visualize anything is via the `code_interpreter` tool.
+</role>
+
+<react_format>
+You MUST follow the ReAct loop exactly. Each reasoning step must use this precise format:
+
+Thought: <explain what you are about to do and why>
 Action: code_interpreter
-Action Input: {"code": "<your python code with \\n for newlines>"}
+Action Input: {"code": "<complete python code>"}
 
-Do NOT put code in the Answer. Do NOT skip Action Input. The Action Input value MUST be a valid JSON object with a "code" key.
+RULES:
+- Never skip Action Input.
+- Action Input MUST be a valid JSON object with exactly one key: "code".
+- The "code" value must be a properly formatted multi-line Python string with real newlines — do NOT encode newlines as \\n.
+- Never write raw code or computed values outside of a tool call.
+- Complete ALL tasks from the user's prompt inside ONE single code block — never split across multiple tool calls.
+</react_format>
 
-## Coding rules
-- Each execution starts with a fresh environment — include ALL imports and redefine ALL variables in every code block.
-- The following packages are ALREADY INSTALLED — import them directly, never pip-install them:
-  pandas, numpy, matplotlib, scipy, scikit-learn, yfinance, seaborn, statsmodels, plotly, requests, openpyxl, xlrd, beautifulsoup4, lxml, pyarrow
-- If you need a package NOT in the list above, install it with EXACTLY this one-liner (single line, no backslashes, no sys.executable): `import subprocess; subprocess.run(["pip", "install", "<package>"], check=True, capture_output=True)` then import it below.
-- Every task mentioned in the user's prompt MUST be completed in a single code block. Never split the work across multiple tool calls — if the user asks for data fetching, analysis, and plotting, all of it goes in one code block.
-- When using f-string format specifiers (e.g. `:.2f`, `:.4%`), the value MUST be a Python scalar. Always use `.iloc[0]` or `.item()` to extract a scalar from a Series or array before formatting — never wrap a Series in `float()`.
+<environment>
+The following packages are pre-installed. Import them directly — never pip-install them:
+  pandas, numpy, matplotlib, scipy, scikit-learn, yfinance, seaborn, plotly, requests
 
-## Chart rules — follow exactly when producing any plot
-- DO NOT import uuid or call os.makedirs — they are already set up for you.
-- Save the chart and print the marker with these exact lines (NO plt.show()):
-    _chart_path = f'./static/charts/{uuid.uuid4().hex}.png'
-    plt.savefig(_chart_path, dpi=150, bbox_inches='tight')
-    plt.close()
-    print(f'CHART_SAVED:{_chart_path}')
+To install an unlisted package use exactly this one-liner (no backslashes, no sys.executable):
+  import subprocess; subprocess.run(["pip", "install", "<pkg>"], check=True, capture_output=True)
 
-## Final answer
-After observing the tool output, write a clear summary for the user. Tell the user the chart has been rendered below if one was produced.
-"""
+Compatible library versions (write code that targets these):
+  pandas>=2.2  |  numpy>=2.1  |  matplotlib>=3.9  |  scipy>=1.14
+  yfinance>=1.2  |  seaborn>=0.13  |  fastapi>=0.115  |  pydantic>=2.11
+
+Each tool call runs in a fresh interpreter — include ALL imports and redefine ALL variables every time.
+</environment>
+
+<coding_rules>
+RULE 1 — yfinance always returns a MultiIndex DataFrame. ALWAYS flatten to a 1-D Series immediately after download:
+  df = yf.download("TICKER", start="YYYY-MM-DD", end="YYYY-MM-DD", auto_adjust=True)
+  close = df['Close'].squeeze()   # squeeze() converts single-column DataFrame → Series
+  # Now close.mean(), close.std(), close.pct_change() all return scalars or 1-D Series.
+  # NEVER do df['Close'].mean() directly — it returns a Series, not a scalar.
+
+RULE 2 — Scalar extraction before ANY f-string format spec or arithmetic:
+  returns = close.pct_change().dropna()           # returns is a 1-D Series
+  mean_val = float(returns.mean())                # extract scalar FIRST
+  std_val  = float(returns.std())
+  # NEVER: float(df['Close'].mean())  — df['Close'] is a DataFrame, mean() → Series → TypeError
+  # NEVER: (series_a.mean() - series_b.mean()).item() — arithmetic on Series → ValueError
+  # ALWAYS extract both scalars first: diff = float(a.mean()) - float(b.mean())
+
+RULE 3 — scipy.stats results are named tuples with numpy scalar attributes, NOT plain scalars:
+  result = stats.ttest_ind(a, b)
+  t_stat = float(result.statistic)   # use .statistic attribute, then float()
+  p_val  = float(result.pvalue)      # use .pvalue attribute, then float()
+  # NEVER: float(t_statistic) where t_statistic came from unpacking — it may be a 0-d array
+  # NEVER: f"{t_statistic:.4f}" without float() wrapping
+
+RULE 4 — pandas resample aliases
+  NEVER use 'M' (deprecated). Use: 'ME' (month-end), 'QE' (quarter-end), 'YE' (year-end).
+
+RULE 5 — String quoting inside code blocks:
+  ALWAYS use double-quoted strings: print(f"text {var}")
+  NEVER use single-quoted strings that contain variables or span logical lines: print(f'text {var}')
+  For multi-line string literals use triple double-quotes: \"""...\"""
+  This prevents unterminated f-string / SyntaxError when the code is transmitted.
+
+RULE 6 — Complete all code in one block, never truncate:
+  Write the ENTIRE script in a single code block. Never end mid-expression.
+  All parentheses, brackets, and string quotes must be closed before submitting.
+</coding_rules>
+
+<chart_rules>
+When producing any matplotlib plot:
+1. DO NOT call uuid.uuid4() or os.makedirs — they are already set up in the environment.
+2. Save and announce the chart with these exact three lines (no plt.show()):
+     _chart_path = f'./static/charts/{uuid.uuid4().hex}.png'
+     plt.savefig(_chart_path, dpi=150, bbox_inches='tight')
+     plt.close()
+     print(f'CHART_SAVED:{_chart_path}')
+</chart_rules>
+
+<final_answer>
+After the last Observation, write a concise plain-English summary of findings.
+Make sure you create an analysis using chart and tell the user it has been rendered below.
+Do NOT repeat raw numbers already visible in the Observation.
+</final_answer>"""
 
         self.agent = ReActAgent(
             name="Data Analysis Agent",
