@@ -41,7 +41,18 @@ export async function analyze(prompt, history = []) {
  * @param {(err: Error) => void} onError
  * @returns {() => void} cancel
  */
-export function analyzeStream(prompt, history = [], onStep, onStepResult, onDone, onError) {
+export async function uploadFile(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || 'Upload failed');
+  }
+  return res.json(); // { file_path, file_name }
+}
+
+export function analyzeStream(prompt, history = [], onStep, onStepResult, onDone, onError, filePath = null, fileName = null) {
   const controller = new AbortController();
 
   const run = async () => {
@@ -50,7 +61,7 @@ export function analyzeStream(prompt, history = [], onStep, onStepResult, onDone
       res = await fetch(`${BASE}/api/agent_analyse/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, history }),
+        body: JSON.stringify({ prompt, history, file_path: filePath, file_name: fileName }),
         signal: controller.signal,
       });
     } catch (err) {
