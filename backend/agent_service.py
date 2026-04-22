@@ -82,6 +82,9 @@ def _decode_escape_sequences(code: str) -> str:
 
 def _code_interpreter(code: str, **kwargs) -> str:
     """Execute Python code and return stdout/stderr."""
+    # Patch before decoding so we match the literal \n escape, not a real newline.
+    code = re.sub(r'(print\(f?)"\\n', r'\1"', code)
+    code = re.sub(r"(print\(f?)'\\n", r"\1'", code)
     code = _decode_escape_sequences(code)
     # Remove any surviving double-escaped backslash line-continuations.
     code = re.sub(r'\\\\\n\s*', ' ', code)
@@ -202,6 +205,10 @@ RULE 5 — String quoting inside code blocks:
 RULE 6 — Complete all code in one block, never truncate:
   Write the ENTIRE script in a single code block. Never end mid-expression.
   All parentheses, brackets, and string quotes must be closed before submitting.
+
+RULE 7 — VERY IMPORTANT Examples of how NOT to write print syntax in code:
+    print("\n Something...") # Avoid leading newlines in print statements — they can break JSON parsing
+    print(f"\n Something...") # Avoid leading newlines in print statements — they can break JSON parsing
 </coding_rules>
 
 <chart_rules>
