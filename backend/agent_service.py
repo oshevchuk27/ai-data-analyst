@@ -85,7 +85,7 @@ def _code_interpreter(code: str, **kwargs) -> str:
     # Patch before decoding so we match the literal \n escape, not a real newline.
     code = re.sub(r'(print\(f?)"\\n', r'\1"', code)
     code = re.sub(r"(print\(f?)'\\n", r"\1'", code)
-    code = _decode_escape_sequences(code)
+    #code = _decode_escape_sequences(code)
     # Remove any surviving double-escaped backslash line-continuations.
     code = re.sub(r'\\\\\n\s*', ' ', code)
     return _code_spec.code_interpreter(code=_CODE_PREAMBLE + code)
