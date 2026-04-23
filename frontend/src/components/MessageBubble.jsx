@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import CodeBlock from './CodeBlock.jsx'
 
 // ── Step metadata ──────────────────────────────────────────────────────────
@@ -389,22 +391,58 @@ function Charts({ urls }) {
 
 // ── Summary ────────────────────────────────────────────────────────────────
 
+const markdownStyles = `
+  .md-summary { color: #e2e8f0; font-size: 14px; line-height: 1.75; }
+  .md-summary p { margin: 0 0 10px; }
+  .md-summary p:last-child { margin-bottom: 0; }
+  .md-summary h1,.md-summary h2,.md-summary h3,.md-summary h4 {
+    color: #f0f4f8; margin: 14px 0 6px; font-weight: 600; line-height: 1.3;
+  }
+  .md-summary h1 { font-size: 18px; } .md-summary h2 { font-size: 16px; }
+  .md-summary h3 { font-size: 14px; } .md-summary h4 { font-size: 13px; }
+  .md-summary ul,.md-summary ol { margin: 6px 0 10px 20px; padding: 0; }
+  .md-summary li { margin-bottom: 4px; }
+  .md-summary strong { color: #fff; font-weight: 600; }
+  .md-summary em { color: #cbd5e0; font-style: italic; }
+  .md-summary code {
+    background: #0d1117; border: 1px solid #2d3748;
+    border-radius: 4px; padding: '2px 5px';
+    font-family: monospace; font-size: 12px; color: #68d391;
+  }
+  .md-summary pre {
+    background: #0d1117; border: 1px solid #2d3748; border-radius: 6px;
+    padding: 10px 12px; overflow-x: auto; margin: 8px 0;
+  }
+  .md-summary pre code { background: none; border: none; padding: 0; font-size: 12px; color: #90cdf4; }
+  .md-summary blockquote {
+    border-left: 3px solid #1D9E75; margin: 8px 0; padding: 4px 12px;
+    color: #a0aec0; font-style: italic;
+  }
+  .md-summary table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+  .md-summary th { background: #2d3748; color: #e2e8f0; padding: 6px 10px; text-align: left; border: 1px solid #4a5568; }
+  .md-summary td { padding: 5px 10px; border: 1px solid #2d3748; color: #cbd5e0; }
+  .md-summary tr:nth-child(even) td { background: #1a202c; }
+  .md-summary a { color: #1D9E75; text-decoration: underline; }
+  .md-summary hr { border: none; border-top: 1px solid #2d3748; margin: 12px 0; }
+`
+
 function Summary({ text }) {
   if (!text) return null
   return (
-    <div style={{
-      background: '#1e2533',
-      border: '1px solid #2d3748',
-      color: '#e2e8f0',
-      padding: '12px 16px',
-      borderRadius: '14px 14px 14px 4px',
-      fontSize: 14,
-      lineHeight: 1.75,
-      maxWidth: '90%',
-      whiteSpace: 'pre-wrap',
-    }}>
-      {text}
-    </div>
+    <>
+      <style>{markdownStyles}</style>
+      <div style={{
+        background: '#1e2533',
+        border: '1px solid #2d3748',
+        padding: '12px 16px',
+        borderRadius: '14px 14px 14px 4px',
+        maxWidth: '90%',
+      }}>
+        <div className="md-summary">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        </div>
+      </div>
+    </>
   )
 }
 
