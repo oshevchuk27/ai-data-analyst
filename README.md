@@ -14,39 +14,22 @@ An agentic AI system that lets users perform data analysis through natural langu
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        Browser (React + Vite)                    │
-│   Chat UI · Think/Act/Observe trace · Chart renderer             │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │ HTTP POST /api/agent_analyse/stream  (SSE)
-┌────────────────────────────▼─────────────────────────────────────┐
-│                        FastAPI Backend                           │
-│                                                                  │
-│   ┌───────────────────────────────────────────────────────────┐  │
-│   │                   agent_service.py                        │  │
-│   │              (LlamaIndex ReActAgent)                      │  │
-│   │                                                           │  │
-│   │   stream_events() loop:                                   │  │
-│   │     AgentOutput   → Think event  (reasoning text)        │  │
-│   │     ToolCall      → Act event    (code to run)           │  │
-│   │     ToolCallResult→ Observe      (stdout + chart URLs)   │  │
-│   └──────────────────────────────┬────────────────────────────┘  │
-│                                  │                               │
-│   ┌──────────────────────────────▼────────────────────────────┐  │
-│   │          CodeInterpreterToolSpec (LlamaIndex)             │  │
-│   │   Executes Python in-process · captures stdout/stderr     │  │
-│   │   Charts saved to static/charts/<uuid>.png               │  │
-│   └───────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│   StaticFiles mount: /charts → backend/static/charts/           │
-└────────────────────────────┬─────────────────────────────────────┘
-                             │ HTTPS
-                   ┌─────────▼──────────┐
-                   │   Anthropic API    │
-                   │ claude-api.        │
-                   │                    │
-                   └────────────────────┘
+```mermaid
+flowchart TD
+    Browser["Browser\nReact + Vite"]
+    Backend["FastAPI Backend"]
+    Agent["ReActAgent\nLlamaIndex"]
+    Executor["Code Interpreter\nPython subprocess"]
+    Anthropic["Anthropic API\nclaude-sonnet-4"]
+
+    Browser -->|"prompt + history (SSE)"| Backend
+    Browser -->|"CSV / Excel upload"| Backend
+    Backend --> Agent
+    Agent -->|"generated code"| Executor
+    Executor -->|"stdout · charts"| Agent
+    Agent <-->|"HTTPS"| Anthropic
+    Agent -->|"Think / Act / Observe events"| Browser
+    Executor -->|"chart images"| Browser
 ```
 
 ### API Routes
@@ -54,6 +37,7 @@ An agentic AI system that lets users perform data analysis through natural langu
 | Route | Purpose |
 |-------|---------|
 | `POST /api/agent_analyse/stream` | ReAct loop over SSE — pushes each Think/Act/Observe step to the browser as it happens |
+| `POST /api/upload` | Accepts a CSV/Excel file, saves it to `uploads/`, returns `file_path` and `file_name` |
 | `GET /health` | Liveness check; returns active model name |
 | `GET /charts/<filename>` | Serves chart PNGs saved by the agent |
 
