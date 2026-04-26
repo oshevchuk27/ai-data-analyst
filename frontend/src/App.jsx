@@ -44,16 +44,28 @@ export default function App() {
     setLoading(true)
 
     const history = buildHistory()
-    const filePath = attachedFile?.path ?? null
-    const fileName = attachedFile?.name ?? null
+
+    // Use newly attached file, or fall back to the most recent file from history
+    let filePath = attachedFile?.path ?? null
+    let fileName = attachedFile?.name ?? null
+    if (!filePath) {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === 'user' && messages[i].filePath) {
+          filePath = messages[i].filePath
+          fileName = messages[i].fileName
+          break
+        }
+      }
+    }
     setAttachedFile(null)
 
-    // Show the file name alongside the user message if one was attached
-    const displayText = fileName ? `[${fileName}]\n${text}` : text
+    // Show the file name alongside the user message if one was newly attached
+    const newlyAttached = attachedFile?.name ?? null
+    const displayText = newlyAttached ? `[${newlyAttached}]\n${text}` : text
 
     setMessages(prev => [
       ...prev,
-      { role: 'user', content: displayText },
+      { role: 'user', content: displayText, filePath, fileName },
       { role: 'assistant', content: '', result: { events: [], summary: null, charts: [] }, streaming: true },
     ])
 

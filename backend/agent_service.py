@@ -327,9 +327,6 @@ Do NOT repeat raw numbers already visible in the Observation.
         except Exception as e:
             print(f"[agent_stream] error: {traceback.format_exc()}")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-        finally:
-            if request.file_path and os.path.exists(request.file_path):
-                os.remove(request.file_path)
 
     def analyze(self, request: AnalyzeRequest) -> AgentAnalyzeResponse:
         """Run the agent and return a structured event trace."""
