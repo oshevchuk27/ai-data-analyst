@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 from llama_index.core.agent import ReActAgent
 from llama_index.core.tools import FunctionTool
 from llama_index.llms.anthropic import Anthropic
-from llama_index.tools.code_interpreter import CodeInterpreterToolSpec
 from models import (
     AgentAnalyzeResponse,
     AgentEvent,
@@ -26,7 +25,7 @@ from models import (
 
 load_dotenv()
 
-_code_spec = CodeInterpreterToolSpec()
+_EXECUTION_TIMEOUT = int(os.getenv("EXECUTION_TIMEOUT_SECONDS", "60"))
 
 # Common data science packages pre-installed at startup so the LLM never needs
 # # subprocess calls for them.
@@ -88,7 +87,16 @@ def _code_interpreter(code: str, **kwargs) -> str:
     #code = _decode_escape_sequences(code)
     # Remove any surviving double-escaped backslash line-continuations.
     code = re.sub(r'\\\\\n\s*', ' ', code)
-    return _code_spec.code_interpreter(code=_CODE_PREAMBLE + code)
+    full_code = _CODE_PREAMBLE + code
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", full_code],
+            capture_output=True,
+            timeout=_EXECUTION_TIMEOUT,
+        )
+        return f"StdOut:\n{result.stdout.decode()}\nStdErr:\n{result.stderr.decode()}"
+    except subprocess.TimeoutExpired:
+        return f"StdErr:\n[Timeout] Execution exceeded {_EXECUTION_TIMEOUT}s limit."
 
 
 _code_interpreter_tools = [
