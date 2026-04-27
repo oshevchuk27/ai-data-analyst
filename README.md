@@ -65,7 +65,7 @@ The agent runs a LlamaIndex `ReActAgent` with `streaming=False` and captures eac
 - **ToolCall** → records tool name + kwargs → emitted as an `Act` event
 - **ToolCallResult** → tool output attached to the preceding Act; `CHART_SAVED:` markers extracted into `charts[]`
 
-A `_CODE_PREAMBLE` is injected at the top of every execution (`import uuid, os; os.makedirs(...)`) so the LLM never needs to write setup boilerplate. A pre-installed package list (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `statsmodels`, `plotly`, and more) is pip-installed once at startup.
+A `_CODE_PREAMBLE` is injected at the top of every execution (`import uuid, os; os.makedirs(...)`) so the LLM never needs to write setup boilerplate. Core data science libraries (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `plotly`, `requests`) are pre-installed via `requirements.txt` and available immediately. Less common packages (e.g. `statsmodels`) can be installed at runtime by the agent via a one-liner `subprocess` pip install.
 
 **Agentic pattern implemented:** Multi-step reasoning (Think → Act → Observe) with automatic self-correction on execution errors and iterative refinement via conversation history.
 
@@ -129,7 +129,7 @@ npm run dev
 | Backend | Python 3.13, FastAPI, Uvicorn |
 | LLM | Anthropic Claude (claude-sonnet-4-20250514) |
 | Code execution | Python `subprocess` with 60s timeout |
-| Data libraries | pandas, numpy, matplotlib, yfinance, scipy, seaborn |
+| Data libraries | pandas, numpy, matplotlib, scipy, scikit-learn, yfinance, seaborn, plotly, requests (pre-installed); additional packages installable at runtime |
 
 ---
 
@@ -200,7 +200,7 @@ The app is deployed using **Railway** (backend) and **Vercel** (frontend). Both 
 The following limitations from Week 1 were addressed in Week 2 using Claude Code:
 
 - **CSV and Excel file upload** — Added `POST /api/upload` endpoint and a paperclip button in the UI. Users can now attach `.csv`, `.xlsx`, or `.xls` files before sending a prompt. The agent receives the file path and loads the data with `pd.read_csv()` or `pd.read_excel()` automatically. Uploaded files are deleted from the server after the response completes.
-- **Dynamic package installation** — Common data science libraries (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `statsmodels`, `plotly`, and more) are now pre-installed at server startup. The LLM no longer needs to write `subprocess` pip install calls for routine packages, eliminating a whole class of code generation errors.
+- **Dynamic package installation** — Common data science libraries (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `plotly`, `requests` and more) are now pre-installed at server startup. The LLM no longer needs to write `subprocess` pip install calls for routine packages, eliminating a whole class of code generation errors. Less common packages (e.g. `statsmodels`) can still be installed at runtime by the agent using a one-liner `subprocess` pip install.
 - **Agent code generation reliability** — Fixed several recurring errors caused by the LLM generating malformed Python inside JSON-encoded action inputs: double-escaped backslash line-continuations (`\\` at end of line), `os.makedirs` syntax errors, and `Series.__format__` type errors on f-string formatting. A `_CODE_PREAMBLE` is now injected before every execution so the LLM never needs to write chart setup boilerplate.
 - **`_uuid` module collision** — Fixed a crash where `import uuid as _uuid` silently resolved to Python's internal C extension `_uuid` (which has no `uuid4`). Renamed to `import uuid` throughout.
 
