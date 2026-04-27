@@ -213,6 +213,27 @@ The following limitations from Week 1 were addressed in Week 2 using Claude Code
 - **No persistent conversation history** — conversation context is stored in browser memory and lost on page refresh.
 - **No authentication or rate limiting** — API endpoints remain publicly accessible with no per-user controls.
 
+## Week 3 Improvements
+
+The following limitations from Week 2 were addressed in Week 3:
+
+- **CSV file persistence across follow-up prompts** — Uploaded files are no longer deleted after the first response. The file path is stored on each user message object in React state; subsequent prompts automatically reuse the most recently uploaded file without requiring a re-upload. Users can still override by attaching a new file at any time.
+- **Execution timeout enforcement** — `CodeInterpreterToolSpec` (the LlamaIndex built-in) had no configurable timeout, making the `EXECUTION_TIMEOUT_SECONDS` environment variable silently ineffective. Replaced with a custom `_code_interpreter` function backed by `subprocess.run(timeout=_EXECUTION_TIMEOUT)`. The timeout now works correctly and returns a descriptive `[Timeout]` error message to the agent when exceeded.
+- **Two-tier library model** — Formalised a pre-installed tier (`pandas`, `numpy`, `matplotlib`, `scipy`, `scikit-learn`, `yfinance`, `seaborn`, `plotly`, `requests`, `openpyxl`, `xlrd`) declared in `requirements.txt` and a runtime-installable tier for less common packages (e.g. `statsmodels`). The agent can install runtime packages via a one-liner `subprocess` pip install without any pre-installed tier bloat.
+- **Input validation and harmful-prompt rejection** — Added a `_BLOCKED_KEYWORDS` list and `_is_harmful()` helper in `main.py`. All three POST endpoints check the prompt before processing and return HTTP 400 with a descriptive message if a harmful pattern is detected. Case-insensitive matching ensures variants like `DELETE FROM` are caught.
+- **Descriptive API error messages** — The streaming endpoint now catches specific Anthropic SDK error types and surfaces human-readable messages to the frontend: rate limit exceeded, invalid API key, credits exhausted, context window overflow, network/timeout errors, and max-iterations reached. Previously all failures appeared as a generic server error.
+- **Frontend error display fix** — Errors returned via the SSE `error` event were silently dropped because the `onError` handler set `content` on the message while `MessageBubble` ignored `content` when a `result` object was present. Fixed by setting `result.error` instead, so error messages now render correctly in the chat.
+
+### Known Limitations (Week 3)
+
+- **No true sandbox isolation** — code execution still runs in a Python subprocess, not a fully isolated Docker container. A Docker-based sandbox is planned for a future iteration.
+- **One file per message** — the UI supports a single file attachment per prompt; attaching a new file replaces the previous one for that turn.
+- **No file size limit** — large files can slow down the agent or cause the output to hit the character cap.
+- **Tabular data rendered as plain text** — the agent prints DataFrames and summary tables as plain text in the Observe pane. HTML table rendering was evaluated but deferred; it is documented as a known limitation.
+- **Keyword-based input validation only** — harmful-prompt detection relies on an explicit keyword list, not semantic analysis. Adversarial prompts that avoid listed keywords will not be blocked. A model-assisted content-safety check is planned for a future iteration.
+- **No persistent conversation history** — conversation context is stored in browser memory and lost on page refresh.
+- **No authentication or rate limiting** — API endpoints remain publicly accessible with no per-user controls.
+
 ---
 
 ## AI Usage Documentation
