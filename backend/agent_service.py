@@ -110,8 +110,10 @@ def _build_user_msg(request: AnalyzeRequest) -> str:
     ext = (request.file_path or "").rsplit(".", 1)[-1].lower()
     loader = "pd.read_excel" if ext in ("xlsx", "xls") else "pd.read_csv"
     return (
-        f'The user has uploaded a file named "{request.file_name}".\n'
-        f'Load it with: df = {loader}(r"{request.file_path}")\n\n'
+        f'A file named "{request.file_name}" is available if the request is about it.\n'
+        f'Only load it if the user\'s prompt refers to this file or its data; '
+        f'if so, use: df = {loader}(r"{request.file_path}")\n'
+        f'If the request is unrelated to this file, ignore it completely.\n\n'
         f'{request.prompt}'
     )
 
@@ -217,6 +219,11 @@ RULE 6 — Complete all code in one block, never truncate:
 RULE 7 — VERY IMPORTANT Examples of how NOT to write print syntax in code:
     print("\n Something...") # Avoid leading newlines in print statements — they can break JSON parsing
     print(f"\n Something...") # Avoid leading newlines in print statements — they can break JSON parsing
+
+RULE 8 — Never fabricate or derive a column the user named:
+  If the user asks you to use a specific column (e.g. "Weekly_Closing_Average"), access it directly by that exact name.
+  Do NOT create, compute, or rename a column to match the requested name.
+  If the column does not exist, a KeyError will be raised — observe the error, then self-correct by using the actual columns available in the dataset.
 </coding_rules>
 
 <chart_rules>
