@@ -240,7 +240,7 @@ The following limitations from Week 2 were addressed in Week 3:
 As required by the course, the following documents all AI tool usage in this project.
 
 ### Tools used
-- **Claude.ai (Anthropic)** — used exclusively throughout the project
+- **Claude.ai and Claude Code (Anthropic)** — used exclusively throughout the project
 
 ### How Claude.ai was used
 
@@ -252,7 +252,7 @@ As required by the course, the following documents all AI tool usage in this pro
 | Debugging & troubleshooting | Diagnosed and resolved CORS errors, Railway build failures (`Railpack` errors, Python version issues), matplotlib rendering issues in production, and Git conflicts |
 | Architecture design | Designed the agentic pipeline architecture (prompt → LLM → code → execute → self-correct → interpret) and the overall project structure |
 | Test generation | Generated all unit tests in `tests/test_executor.py` and `tests/test_api.py` |
-| Documentation | Generated this README, `docs/architecture.md`, and inline code comments |
+| Documentation | Generated this README and inline code comments |
 | Demo scenario design | Designed all 5 demo scenario prompts and follow-up prompts for iterative refinement testing |
 
 ### Which parts were AI-assisted
