@@ -16,6 +16,22 @@ from models import AnalyzeRequest, AnalyzeResponse, AgentAnalyzeRequest, AgentAn
 
 load_dotenv()
 
+_BLOCKED_KEYWORDS = [
+    # Shell / filesystem destruction
+    "rm -rf", "format c:", "mkfs", "shutdown", "reboot",
+    "os.system", "/etc/passwd", "/etc/shadow",
+    # SQL destruction
+    "drop table", "drop database", "delete from", "truncate table",
+    # Natural language harmful intent
+    "hack", "exploit", "inject", "bypass", "jailbreak",
+    "delete all", "wipe", "overwrite",
+    # Credential / secret access
+    "api key", "steal", "exfiltrate", "credentials",
+]
+
+def _is_harmful(prompt: str) -> bool:
+    return any(kw in prompt.lower() for kw in _BLOCKED_KEYWORDS)
+
 # Ensure required directories exist before mounting
 os.makedirs("static/charts", exist_ok=True)
 UPLOADS_DIR = os.path.abspath("uploads")
@@ -75,12 +91,10 @@ def analyze(request: AnalyzeRequest):
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
     # Basic input validation — reject obviously harmful requests
-    blocked_keywords = ["rm -rf", "drop table", "delete from", "format c:"]
-    lower = request.prompt.lower()
-    if any(kw in lower for kw in blocked_keywords):
+    if _is_harmful(request.prompt):
         raise HTTPException(
             status_code=400,
-            detail="Prompt contains disallowed content.",
+            detail="Your request was blocked because it contains content associated with harmful operations. Please rephrase your request and try again.",
         )
 
     try:
@@ -105,12 +119,10 @@ def agent_analyse(request: AgentAnalyzeRequest):
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
     # Basic input validation — reject obviously harmful requests
-    blocked_keywords = ["rm -rf", "drop table", "delete from", "format c:"]
-    lower = request.prompt.lower()
-    if any(kw in lower for kw in blocked_keywords):
+    if _is_harmful(request.prompt):
         raise HTTPException(
             status_code=400,
-            detail="Prompt contains disallowed content.",
+            detail="Your request was blocked because it contains content associated with harmful operations. Please rephrase your request and try again.",
         )
 
     try:
@@ -137,9 +149,11 @@ async def agent_analyse_stream(request: AgentAnalyzeRequest):
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="Prompt cannot be empty.")
 
-    blocked_keywords = ["rm -rf", "drop table", "delete from", "format c:"]
-    if any(kw in request.prompt.lower() for kw in blocked_keywords):
-        raise HTTPException(status_code=400, detail="Prompt contains disallowed content.")
+    if _is_harmful(request.prompt):
+        raise HTTPException(
+            status_code=400,
+            detail="Your request was blocked because it contains content associated with harmful operations. Please rephrase your request and try again.",
+        )
 
     analyze_request = AnalyzeRequest(
         prompt=request.prompt,

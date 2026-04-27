@@ -334,7 +334,22 @@ Do NOT repeat raw numbers already visible in the Observation.
 
         except Exception as e:
             print(f"[agent_stream] error: {traceback.format_exc()}")
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            error_type = type(e).__name__
+            if "RateLimitError" in error_type:
+                msg = "The API rate limit has been reached. Please wait a moment and try again."
+            elif "AuthenticationError" in error_type:
+                msg = "Invalid API key. Please check your ANTHROPIC_API_KEY configuration."
+            elif any(w in str(e).lower() for w in ("credit", "billing", "insufficient")):
+                msg = "Your Anthropic API credits have been exhausted. Please add credits at console.anthropic.com."
+            elif "BadRequestError" in error_type or "context_length" in str(e).lower() or "token" in str(e).lower():
+                msg = "The conversation is too long for the model's context window. Please start a new conversation."
+            elif "APIConnectionError" in error_type or "APITimeoutError" in error_type:
+                msg = "Could not reach the Anthropic API. Please check your internet connection and try again."
+            elif any(w in str(e).lower() for w in ("max iterations", "max_iterations", "reached the limit")):
+                msg = "The agent was unable to complete the analysis after multiple attempts. Please try rephrasing your request or breaking it into simpler steps."
+            else:
+                msg = f"An unexpected error occurred: {str(e)}"
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
     def analyze(self, request: AnalyzeRequest) -> AgentAnalyzeResponse:
         """Run the agent and return a structured event trace."""

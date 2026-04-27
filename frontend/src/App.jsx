@@ -113,7 +113,11 @@ export default function App() {
           const msgs = [...prev]
           const last = msgs[msgs.length - 1]
           if (last?.streaming) {
-            return [...msgs.slice(0, -1), { ...last, content: `Error: ${err.message}`, streaming: false }]
+            return [...msgs.slice(0, -1), {
+              ...last,
+              result: { ...last.result, error: err.message },
+              streaming: false,
+            }]
           }
           return [...msgs, { role: 'assistant', content: `Error: ${err.message}` }]
         })
