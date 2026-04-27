@@ -152,15 +152,14 @@ ai-data-analyst/
 │       │   ├── CodeBlock.jsx
 │       │   └── ChartOutput.jsx
 │       └── api.js
-├── backend/
-│   ├── requirements.txt
-│   ├── main.py          ← FastAPI app + routes
-│   ├── agent.py         ← LLM orchestration + system prompt
-│   ├── executor.py      ← Python code execution sandbox
-│   ├── models.py        ← Pydantic request/response models
-│   └── Procfile         ← Railway deployment config
-└── docs/
-    └── architecture.md
+└── backend/
+    ├── requirements.txt
+    ├── main.py          ← FastAPI app + routes
+    ├── agent.py         ← LLM orchestration + system prompt
+    ├── agent_service.py ← ReAct agent + SSE streaming
+    ├── executor.py      ← Python code execution sandbox
+    ├── models.py        ← Pydantic request/response models
+    └── Procfile         ← Railway deployment config
 ```
 
 ---
